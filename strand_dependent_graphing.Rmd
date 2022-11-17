@@ -8,15 +8,18 @@ library(reshape)
 #Enter the path to the TAIR10 GTF, your gene list, and your bedgraph in likes 11, 12 and 13 respectively 
 ##This assumes there are no headers in your data, the first line of the file is data
 ###noramlization will be the eventual y-axis lab
+###start and end are start and end positions from the TSS
 ```{r}
 gene_List <- read.delim("/Path/to/GeneList", header = FALSE)
 Tair10 <- read.delim("/Path/to/TAIR10/GTF", header = FALSE)
 bedgraph <- read.delim("/Path/to/bedgraph", header = FALSE)
 normalization <- "y axis label"
+start <- #negative upstream value
+end <- #positive downstream value
 ```
 
 #Generate Position file around your genes eventually used for graphing. Default is 3kb from the gene TSS
-##To change the 3kb default, change the addition and subtraction values in line 33 AND 34
+
 ```{r}
 genes.only <- c(substr(Tair10$V9, 34,42))
 Tair10$geneID <- genes.only
@@ -30,8 +33,8 @@ gene_info <- gene_info %>%
 
 genes_plus <- subset(gene_info, V7 == "+")
 genes_minus <- subset(gene_info, V7 == "-")
-genes_plus.pos <- as.data.frame(cbind(genes_plus$V1, genes_plus$V4-3000,  genes_plus$V4+3000))
-genes_minus.pos <- as.data.frame(cbind(genes_minus$V1, genes_minus$V5-3000,  genes_minus$V5+3000))
+genes_plus.pos <- as.data.frame(cbind(genes_plus$V1, genes_plus$V4+start,  genes_plus$V4+end))
+genes_minus.pos <- as.data.frame(cbind(genes_minus$V1, genes_minus$V5+end,  genes_minus$V5+start))
 ```
 
 #Generate the positions that will be extraxted from the bedgraph file
@@ -45,7 +48,7 @@ for( i in 1:length(genes_plus.pos$V1)) {
 mat <- t(mat)
 mat_collapse <- c(mat)
 filter_plus$start <- mat_collapse
-filter_plus$RelPos <- rep(-3000:3000, nrow(genes_plus.pos))
+filter_plus$RelPos <- rep(start:end, nrow(genes_plus.pos))
 colnames(filter_plus)[1] <- "chr"
 filter_minus <- as.data.frame(rep(genes_minus.pos$V1, each = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1])))
 mat <- matrix(ncol = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1]), nrow = nrow(genes_minus.pos))
@@ -56,7 +59,7 @@ for( i in 1:length(genes_minus.pos$V1)) {
 mat <- t(mat)
 mat_collapse <- c(mat)
 filter_minus$start <- mat_collapse
-filter_minus$RelPos <- rep(3000:-3000, nrow(genes_minus.pos))
+filter_minus$RelPos <- rep(start:end, nrow(genes_minus.pos))
 colnames(filter_minus)[1] <- "chr"
 ```
 
