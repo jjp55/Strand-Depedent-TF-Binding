@@ -1,0 +1,80 @@
+#Packages Needed
+```{r}
+library(dplyr)
+library(ggplot2)
+library(reshape)
+```
+
+#Enter the path to the TAIR10 GTF, your gene list, and your bedgraph in likes 11, 12 and 13 respectively 
+##This assumes there are no headers in your data, the first line of the file is data
+###noramlization will be the eventual y-axis lab
+```{r}
+gene_List <- read.delim("/Path/to/GeneList", header = FALSE)
+Tair10 <- read.delim("/Path/to/TAIR10/GTF", header = FALSE)
+bedgraph <- read.delim("/Path/to/bedgraph", header = FALSE)
+normalization <- "y axis label"
+```
+
+#Generate Position file around your genes eventually used for graphing. Default is 3kb from the gene TSS
+##To change the 3kb default, change the addition and subtraction values in line 33 AND 34
+```{r}
+genes.only <- c(substr(Tair10$V9, 34,42))
+Tair10$geneID <- genes.only
+transcripts <- subset(Tair10, V3 == "transcript")
+gene_info <- subset(transcripts, geneID %in% NPR1_4hours$NearestPromoterID)
+gene_info$V9 <- NULL
+
+gene_info <- gene_info %>%
+  arrange(geneID, V4) %>%
+  filter(duplicated(geneID) == FALSE)
+
+genes_plus <- subset(gene_info, V7 == "+")
+genes_minus <- subset(gene_info, V7 == "-")
+genes_plus.pos <- as.data.frame(cbind(genes_plus$V1, genes_plus$V4-3000,  genes_plus$V4+3000))
+genes_minus.pos <- as.data.frame(cbind(genes_minus$V1, genes_minus$V5-3000,  genes_minus$V5+3000))
+```
+
+#Generate the positions that will be extraxted from the bedgraph file
+```{r}
+filter_plus <- as.data.frame(rep(genes_plus.pos$V1, each = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1]), nrow = nrow(genes_plus.pos))
+for( i in 1:length(genes_plus.pos$V1)) {
+     nt <- genes_plus.pos$V2[i]:genes_plus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_plus$start <- mat_collapse
+filter_plus$RelPos <- rep(-3000:3000, nrow(genes_plus.pos))
+colnames(filter_plus)[1] <- "chr"
+filter_minus <- as.data.frame(rep(genes_minus.pos$V1, each = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1]), nrow = nrow(genes_minus.pos))
+for( i in 1:length(genes_minus.pos$V1)) {
+     nt <- genes_minus.pos$V2[i]:genes_minus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_minus$start <- mat_collapse
+filter_minus$RelPos <- rep(3000:-3000, nrow(genes_minus.pos))
+colnames(filter_minus)[1] <- "chr"
+```
+
+#Extract the score of the bedgraph files and graph the average
+##The y-axis can be changes based
+```{r}
+plus_score <- inner_join(filter_plus, bedgraph, by = c("chr"= "V1", "start" = "V2"))
+minus_score <- inner_join(filter_minus, bedgraph, by = c("chr"= "V1", "start" = "V2"))
+scores<- rbind(plus_score, minus_score)
+
+graphing_df <- aggregate(V4 ~ RelPos, data=scores, mean)
+
+ggplot(graphing_df, aes(x = RelPos, y = V4)) +
+  geom_line(size = 0.5) + 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"), legend.position = c(0.96, 0.8), legend.text = element_text(size = 12), legend.key=element_blank()) +
+  xlab(expression("Position from TSS")) +
+  theme(axis.text = element_text(size = 14)) +
+  theme(axis.title = element_text(size = 20)) +
+  ylab(normalization) +
+  guides(colour = guide_legend(override.aes = list(size=2)))
+```
