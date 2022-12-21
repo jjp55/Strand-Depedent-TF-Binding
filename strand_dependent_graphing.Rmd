@@ -24,7 +24,7 @@ end <- #positive downstream value
 genes.only <- c(substr(Tair10$V9, 34,42))
 Tair10$geneID <- genes.only
 transcripts <- subset(Tair10, V3 == "transcript")
-gene_info <- subset(transcripts, geneID %in% gene_List)
+gene_info <- subset(transcripts, geneID %in% gene_List$V1)
 gene_info$V9 <- NULL
 
 gene_info <- gene_info %>%
