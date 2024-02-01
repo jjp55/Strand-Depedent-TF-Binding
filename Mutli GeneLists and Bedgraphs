@@ -1,0 +1,97 @@
+```{r}
+library("ggplot2")
+library("dplyr")
+```
+
+```{r}
+Tair10 <- read.delim("/Path/to/araport11_protein_coding.gtf", header = FALSE)
+genes.only <- c(substr(Tair10$V9, 34,42))
+Tair10$geneID <- genes.only
+transcripts <- subset(Tair10, V3 == "transcript")
+```
+
+```{r}
+genelists <- #Number of gene list of interest, e.g. 2
+bedgraphs <- #Number of bedgraph files of interest, e.g. 2
+bedgraph1 <- read.delim("/path/to/bedgraph1", header = F)
+IP1 <- "Bedgraph 1 Info"
+bedgraph2 <- read.delim("/path/to/bedgraph1", header = F)
+IP2 <- "Bedgraph 2 Info"
+start <- #Insert distance upstream from transcripton start site, e.g. -3000
+end <- #Insert distance downstream from transcripton start site, e.g. 3000
+genelist1 <- read.delim("path/to/genelist1")
+treatment1 <- "Gene List 1 Info"
+genelist2 <- read.delim("path/to/genelist2")
+treatment2 <- "Gene List 2 Info"
+```
+
+```{r}
+#Create an empty data frame
+final_df  <- NULL
+
+#Subset the transcriptome down to genes of interest
+for (j in 1:genelists) {
+gene_info <- subset(transcripts, geneID %in% c(get(paste0('genelist',j)), 1, 9))
+gene_info$V9 <- NULL
+gene_info <- gene_info %>%
+  arrange(geneID, V4) %>%
+  filter(duplicated(geneID) == FALSE)
+
+#Split genes based on coding strand
+genes_plus <- subset(gene_info, V7 == "+")
+genes_minus <- subset(gene_info, V7 == "-")
+genes_plus.pos <- as.data.frame(cbind(genes_plus$V1, genes_plus$V4+start,  genes_plus$V4+end))
+genes_minus.pos <- as.data.frame(cbind(genes_minus$V1, genes_minus$V5+end,  genes_minus$V5+start))
+
+#Create a distance from transcriptional start site reference for genes codon on the Watson strand
+filter_plus <- as.data.frame(rep(genes_plus.pos$V1, each = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1]), nrow = nrow(genes_plus.pos))
+for( i in 1:length(genes_plus.pos$V1)) {
+     nt <- genes_plus.pos$V2[i]:genes_plus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_plus$start <- mat_collapse
+filter_plus$RelPos <- rep(start:end, nrow(genes_plus.pos))
+colnames(filter_plus)[1] <- "chr"
+colnames(filter_plus)[2] <- "nt"
+
+#Create a distance from transcriptional start site reference for genes codon on the Crick strand
+filter_minus <- as.data.frame(rep(genes_minus.pos$V1, each = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1]), nrow = nrow(genes_minus.pos))
+for( i in 1:length(genes_minus.pos$V1)) {
+     nt <- genes_minus.pos$V2[i]:genes_minus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_minus$start <- mat_collapse
+filter_minus$RelPos <- rep(start:end, nrow(genes_minus.pos))
+colnames(filter_minus)[1] <- "chr"
+colnames(filter_minus)[2] <- "nt"
+print(paste("Gene map for", get(paste0('treatment',j)), "has been made"))
+
+#Generate scores for each nucleotide in the defined start and stop region from the transcriptional start site
+for (b in 1:bedgraphs) {
+plus_score <- inner_join(filter_plus, get(paste0('bedgraph',b)), by = c("chr"= "V1", "nt" = "V2"))
+minus_score <- inner_join(filter_minus, get(paste0('bedgraph',b)), by = c("chr"= "V1", "nt" = "V2"))
+scores<- rbind(plus_score, minus_score)
+print(paste("-Mean scores for", get(paste0('IP',b)), "has been made"))
+
+#Average scores based on the relative position from the start site
+df <- aggregate(V4 ~ RelPos, data=scores, mean)
+print("--Aggregating Scores")
+
+#Annotate the mean score with the gene list and bedgraph associated with it
+df$Treatment <- get(paste0('treatment',j))
+df$IP <- (get(paste0('IP',b)))
+df$Decription <- paste(df$Treatment, df$IP)
+print("--Annotating")
+
+#Store data into a final data frame
+final_df <- rbind(final_df, df)
+}
+}
+print("Done!")
+```
