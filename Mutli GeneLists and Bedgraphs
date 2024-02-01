@@ -86,7 +86,7 @@ print("--Aggregating Scores")
 #Annotate the mean score with the gene list and bedgraph associated with it
 df$Treatment <- get(paste0('treatment',j))
 df$IP <- (get(paste0('IP',b)))
-df$Decription <- paste(df$Treatment, df$IP)
+df$Description <- paste(df$Treatment, df$IP)
 print("--Annotating")
 
 #Store data into a final data frame
