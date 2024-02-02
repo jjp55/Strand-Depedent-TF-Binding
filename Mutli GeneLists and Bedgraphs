@@ -11,23 +11,26 @@ transcripts <- subset(Tair10, V3 == "transcript")
 ```
 
 ```{r}
-genelists <- #Number of gene list of interest, e.g. 2
+genelists <- #Number of gene lists of interest, e.g. 2
 bedgraphs <- #Number of bedgraph files of interest, e.g. 2
 bedgraph1 <- read.delim("/path/to/bedgraph1", header = F)
 IP1 <- "Bedgraph 1 Info"
 bedgraph2 <- read.delim("/path/to/bedgraph1", header = F)
 IP2 <- "Bedgraph 2 Info"
-start <- #Insert distance upstream from transcripton start site, e.g. -3000
-end <- #Insert distance downstream from transcripton start site, e.g. 3000
+start <- #Insert distance upstream from transcription start site, e.g. -3000
+end <- #Insert distance downstream from transcription start site, e.g. 3000
 genelist1 <- read.delim("path/to/genelist1")
 treatment1 <- "Gene List 1 Info"
 genelist2 <- read.delim("path/to/genelist2")
 treatment2 <- "Gene List 2 Info"
+controlNormalize <- #"Yes" or "No"
+ControlDescripton <- #IP Number; e.g. IP3
 ```
 
 ```{r}
-#Create an empty data frame
+#Create empty data frames
 final_df  <- NULL
+normalized_df <- NULL
 
 #Subset the transcriptome down to genes of interest
 for (j in 1:genelists) {
@@ -70,14 +73,14 @@ filter_minus$start <- mat_collapse
 filter_minus$RelPos <- rep(start:end, nrow(genes_minus.pos))
 colnames(filter_minus)[1] <- "chr"
 colnames(filter_minus)[2] <- "nt"
-print(paste("Gene map for", get(paste0('treatment',j)), "has been made"))
+print(paste("Nucleotide map for", get(paste0('treatment',j)), "has been made"))
 
 #Generate scores for each nucleotide in the defined start and stop region from the transcriptional start site
 for (b in 1:bedgraphs) {
 plus_score <- inner_join(filter_plus, get(paste0('bedgraph',b)), by = c("chr"= "V1", "nt" = "V2"))
 minus_score <- inner_join(filter_minus, get(paste0('bedgraph',b)), by = c("chr"= "V1", "nt" = "V2"))
 scores<- rbind(plus_score, minus_score)
-print(paste("-Mean scores for", get(paste0('IP',b)), "has been made"))
+print(paste("-Scores for", get(paste0('IP',b)), "have been found"))
 
 #Average scores based on the relative position from the start site
 df <- aggregate(V4 ~ RelPos, data=scores, mean)
@@ -93,5 +96,33 @@ print("--Annotating")
 final_df <- rbind(final_df, df)
 }
 }
+rm(filter_minus, filter_plus, gene_info, genes_minus, genes_minus.pos, genes_plus, genes_plus.pos, mat, minus_score, plus_score, scores, df)
+
+#Normalize to a IgG or other input file
+if (controlNormalize == "Yes" | controlNormalize == "yes" | controlNormalize == "Y" | controlNormalize == "y") {
+  print(paste("Normalizing to", paste0(ControlDescripton)))
+  for (k in 1:genelists) {
+    treatment_df <- subset(final_df, Treatment == get(paste0('treatment',k)))
+    treatment_IgG <- subset(treatment_df, IP == ControlDescripton)
+    merge <- merge(treatment_df, treatment_IgG, by = "RelPos")
+    merge$Normalized <- (merge$V4.x)/(merge$V4.y)
+    merge_df <- subset(merge, IP.x != ControlDescripton)
+    normalized_df <- rbind(normalized_df, merge_df)
+  }
+}
+
+#Cleaning up final data frame and removing intermediate files
+print("Cleaning up files and environment")
+if (controlNormalize == "Yes" | controlNormalize == "yes" | controlNormalize == "Y" | controlNormalize == "y") {
+       normalized_df$V4.y <- NULL
+       normalized_df$Treatment.y <- NULL
+       normalized_df$IP.y <- NULL
+       normalized_df$Description.y <- NULL
+       colnames(normalized_df) <- c("RelativePosition","Score", "Treatment", "IP", "Description", "NormalizedScore")
+       final_df <- normalized_df}
+if (controlNormalize != "Yes" & controlNormalize != "yes" & controlNormalize != "Y" & controlNormalize != "y") {
+  colnames(final_df) <- c("RelativePosition","Score", "Treatment", "IP", "Description")
+} 
+rm(treatment_IgG, treatment_df, merge, merge_df, normalized_df)
 print("Done!")
 ```
