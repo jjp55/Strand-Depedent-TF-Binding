@@ -1,8 +1,10 @@
+#The mean plot function requires dlpyr. ggplot2 is commonly used for graphing resulting data. 
 ```{r}
 library("ggplot2")
 library("dplyr")
 ```
 
+#Create the two files needed meanPlot. The first is your bedgraph files and a description of the files. The second is the gene lists being examined and a description of the genes. 
 ```{r}
 bedgraphs <- c("1.bedgraph",
                "2.bedgraph",
@@ -17,6 +19,7 @@ genelist_table <- data.frame(sampleNames = listNames, fileNames = genelists)
 gtf <- read.delim("gtf.gtf", header = FALSE)
 ```
 
+#The meanPlot function that create a data frame
 ```{r}
 meanPlot <- function(genelist_table, bedgraph_table, start, end, controlNormalize = FALSE, ControlDescripton = NULL){
 
@@ -131,9 +134,9 @@ return(final_df)
 print("Done!")
 }
 ```
-
+#Example of the function
 ```{r}
-df_results <- meanPlot(genelist_table, bedgraph_table, start = -3000, end = 3000, controlNormalize = TRUE, ControlDescripton = "H3KAc input")
+df_results <- meanPlot(genelist_table, bedgraph_table, start = -3000, end = 3000, controlNormalize = TRUE, ControlDescripton = "Input")
 ```
 
 
