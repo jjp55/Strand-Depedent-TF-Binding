@@ -1,0 +1,139 @@
+```{r}
+library("ggplot2")
+library("dplyr")
+```
+
+```{r}
+bedgraphs <- c("1.bedgraph",
+               "2.bedgraph",
+               "3.bedgraph")
+bedNames <- as.factor(c("Histone", "TF", "Input"))
+bedgraph_table <- data.frame(sampleNames = bedNames, fileNames = bedgraphs)
+
+genelists <- c("repressed_genes.txt",
+               "induced_genes.txt")
+listNames <- as.factor(c("Repressed", "Induced"))
+genelist_table <- data.frame(sampleNames = listNames, fileNames = genelists)
+gtf <- read.delim("gtf.gtf", header = FALSE)
+```
+
+```{r}
+meanPlot <- function(genelist_table, bedgraph_table, start, end, controlNormalize = FALSE, ControlDescripton = NULL){
+
+#Create empty data frames
+final_df  <- NULL
+normalized_df <- NULL
+
+#Reduce GTF file to one isoform
+genes.only <- c(substr(gtf$V9, 34,42))
+gtf$geneID <- genes.only
+transcripts <- subset(gtf, V3 == "transcript")
+gene_info <- transcripts
+gene_info$V9 <- NULL
+gene_info <- gene_info %>%
+  arrange(geneID, V4) %>%
+  filter(duplicated(geneID) == FALSE)
+genes <- gene_info
+
+#Read in Bedgraph File
+for (b in 1:nrow(bedgraph_table)) {
+print("Reading in bedgraph")
+bedgraph <- read.delim(bedgraph_table[b,2], header = F)
+
+#Subset the transcriptome down to genes of interest
+for (j in 1:nrow(genelist_table)) {
+currentList <- read.delim(genelist_table[j,2])
+gene_info <- subset(genes, geneID %in% c(substr(currentList[,1], 1, 9)))
+
+
+#Split genes based on coding strand
+genes_plus <- subset(gene_info, V7 == "+")
+genes_minus <- subset(gene_info, V7 == "-")
+genes_plus.pos <- as.data.frame(cbind(genes_plus$V1, genes_plus$V4+start,  genes_plus$V4+end))
+genes_minus.pos <- as.data.frame(cbind(genes_minus$V1, genes_minus$V5+end,  genes_minus$V5+start))
+
+#Create a distance from transcriptional start site reference for genes codon on the Watson strand
+filter_plus <- as.data.frame(rep(genes_plus.pos$V1, each = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_plus.pos$V2[1]:genes_plus.pos$V3[1]), nrow = nrow(genes_plus.pos))
+for( i in 1:length(genes_plus.pos$V1)) {
+     nt <- genes_plus.pos$V2[i]:genes_plus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_plus$start <- mat_collapse
+filter_plus$RelPos <- rep(start:end, nrow(genes_plus.pos))
+colnames(filter_plus)[1] <- "chr"
+colnames(filter_plus)[2] <- "nt"
+
+#Create a distance from transcriptional start site reference for genes codon on the Crick strand
+filter_minus <- as.data.frame(rep(genes_minus.pos$V1, each = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1])))
+mat <- matrix(ncol = length(genes_minus.pos$V2[1]:genes_minus.pos$V3[1]), nrow = nrow(genes_minus.pos))
+for( i in 1:length(genes_minus.pos$V1)) {
+     nt <- genes_minus.pos$V2[i]:genes_minus.pos$V3[i]
+     mat[i,] <- c(nt)
+}
+mat <- t(mat)
+mat_collapse <- c(mat)
+filter_minus$start <- mat_collapse
+filter_minus$RelPos <- rep(start:end, nrow(genes_minus.pos))
+colnames(filter_minus)[1] <- "chr"
+colnames(filter_minus)[2] <- "nt"
+print(paste("Nucleotide map for", paste0(genelist_table[j,1]), "has been made"))
+plus_score <- inner_join(filter_plus, bedgraph, by = c("chr"= "V1", "nt" = "V2"))
+minus_score <- inner_join(filter_minus, bedgraph, by = c("chr"= "V1", "nt" = "V2"))
+scores<- rbind(plus_score, minus_score)
+print(paste("-Scores for", paste0(bedgraph_table$sampleNames[b]), "have been found"))
+
+#Average scores based on the relative position from the start site
+df <- aggregate(V4 ~ RelPos, data=scores, mean)
+print("--Aggregating Scores")
+
+#Annotate the mean score with the gene list and bedgraph associated with it
+df$Treatment <- paste0(genelist_table[j,1])
+df$IP <- paste0(bedgraph_table[b,1])
+df$Description <- paste(df$Treatment, df$IP)
+print("--Annotating")
+
+#Store data into a final data frame
+final_df <- rbind(final_df, df)
+}
+}
+
+
+#Normalize to a IgG or other input file
+if (controlNormalize == TRUE) {
+  print(paste("Normalizing to", paste0(ControlDescripton)))
+  for (k in 1:nrow(genelist_table)) {
+    treatment_df <- subset(final_df, Treatment == paste0(genelist_table[k,1]))
+    treatment_IgG <- subset(treatment_df, IP == ControlDescripton)
+    merge <- merge(treatment_df, treatment_IgG, by = "RelPos")
+    merge$Normalized <- (merge$V4.x)/(merge$V4.y)
+    merge_df <- subset(merge, IP.x != ControlDescripton)
+    normalized_df <- rbind(normalized_df, merge_df)
+  }
+}
+
+#Cleaning up final data frame and removing intermediate files
+print("Cleaning up output")
+if (controlNormalize == TRUE) {
+       normalized_df$V4.y <- NULL
+       normalized_df$Treatment.y <- NULL
+       normalized_df$IP.y <- NULL
+       normalized_df$Description.y <- NULL
+       colnames(normalized_df) <- c("RelativePosition","Score", "Treatment", "IP", "Description", "NormalizedScore")
+       final_df <- normalized_df}
+else{ (controlNormalize == FALSE) 
+  colnames(final_df) <- c("RelativePosition","Score", "Treatment", "IP", "Description")
+} 
+return(final_df)
+
+print("Done!")
+}
+```
+
+```{r}
+df_results <- meanPlot(genelist_table, bedgraph_table, start = -3000, end = 3000, controlNormalize = TRUE, ControlDescripton = "H3KAc input")
+```
+
+
